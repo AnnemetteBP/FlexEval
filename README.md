@@ -33,7 +33,7 @@ It brings Flex capture and analysis together with integrated `EuroEval` and
 ### From source
 
 ```bash
-git clone <your-flexeval-repo-url>
+git clone https://github.com/AnnemetteBP/FlexEval.git
 cd FlexEval
 ```
 
