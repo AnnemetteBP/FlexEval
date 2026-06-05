@@ -1,0 +1,21 @@
+{
+  "name": "multi_wiki_qa_da",
+  "path": "eval/benchmarks/mix/data/multi_wiki_qa_da.jsonl",
+  "num_examples": 500,
+  "domain": "wiki",
+  "scoring_mode": "qa",
+  "prompting": {
+    "format": "raw_prompt",
+    "chat_template": {
+      "enabled": false
+    }
+  },
+  "generation": {
+    "max_new_tokens": 512
+  },
+  "tokenization": {
+    "prompt_add_special_tokens": false,
+    "reference_add_special_tokens": false,
+    "decode_skip_special_tokens": true
+  }
+}

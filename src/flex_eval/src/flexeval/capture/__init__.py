@@ -1,0 +1,2 @@
+"""Internal state capture interfaces."""
+

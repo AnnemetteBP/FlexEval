@@ -1,0 +1,13 @@
+{
+  "num_examples": 4,
+  "mean_f1": 0.0,
+  "mean_em": 0.0,
+  "f1_ci95": {
+    "lower": 0.0,
+    "upper": 0.0
+  },
+  "em_ci95": {
+    "lower": 0.0,
+    "upper": 0.0
+  }
+}

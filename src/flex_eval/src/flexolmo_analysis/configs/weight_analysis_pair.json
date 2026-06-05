@@ -1,0 +1,23 @@
+{
+  "shared": {
+    "model_root": "/work/training/FlexMoRE/models",
+    "model_registry": "model_paths/all_models.txt",
+    "selected_layers": "early_mid_late_last"
+  },
+  "runtime": {
+    "device": "auto",
+    "dtype": "auto",
+    "public_expert_idx": 0,
+    "output_root": "outputs/analysis/captures/weight_analysis"
+  },
+  "models": [
+    {
+      "enabled": true,
+      "model_name": "MODEL_NAME_A"
+    },
+    {
+      "enabled": true,
+      "model_name": "MODEL_NAME_B"
+    }
+  ]
+}

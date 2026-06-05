@@ -1,0 +1,851 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+
+import pandas as pd
+from pandas.errors import EmptyDataError
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_COACTIVATION_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_coactivation"
+DEFAULT_LATENT_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_latent_space"
+DEFAULT_TOP1_TOP2_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_top1_top2_confusion"
+DEFAULT_ROUTING_CONFIDENCE_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_routing_confidence"
+DEFAULT_CORRECTNESS_CONDITIONED_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_correctness_conditioned"
+DEFAULT_EXPERT_CONTRIBUTION_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_expert_contribution"
+DEFAULT_ROUTER_GEOMETRY_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_router_geometry"
+DEFAULT_REPRESENTATION_GEOMETRY_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_representation_geometry"
+DEFAULT_ROUTING_LIGHT_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "routing_light" / "a4"
+DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "eval_results" / "mix" / "comparisons" / "55b_summary_tables"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate compact CSV and LaTeX summary tables for mix co-activation and latent analyses."
+    )
+    parser.add_argument("--coactivation-root", type=Path, default=DEFAULT_COACTIVATION_ROOT)
+    parser.add_argument("--latent-root", type=Path, default=DEFAULT_LATENT_ROOT)
+    parser.add_argument("--top1-top2-root", type=Path, default=DEFAULT_TOP1_TOP2_ROOT)
+    parser.add_argument("--routing-confidence-root", type=Path, default=DEFAULT_ROUTING_CONFIDENCE_ROOT)
+    parser.add_argument("--correctness-conditioned-root", type=Path, default=DEFAULT_CORRECTNESS_CONDITIONED_ROOT)
+    parser.add_argument("--expert-contribution-root", type=Path, default=DEFAULT_EXPERT_CONTRIBUTION_ROOT)
+    parser.add_argument("--router-geometry-root", type=Path, default=DEFAULT_ROUTER_GEOMETRY_ROOT)
+    parser.add_argument("--representation-geometry-root", type=Path, default=DEFAULT_REPRESENTATION_GEOMETRY_ROOT)
+    parser.add_argument("--routing-light-root", type=Path, default=DEFAULT_ROUTING_LIGHT_ROOT)
+    parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument(
+        "--model-names",
+        default="FlexOlmo-8x7B-1T-a4-55B-v2,FlexOlmo-8x7B-1T-a4-55B-v2-rt",
+        help="Comma-separated model names in left,right comparison order.",
+    )
+    return parser.parse_args()
+
+
+def parse_model_names(raw_value: str) -> list[str]:
+    names = [part.strip() for part in raw_value.split(",") if part.strip()]
+    if len(names) != 2:
+        raise ValueError("Expected exactly two model names for summary-table comparisons.")
+    return names
+
+
+def load_csv(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    try:
+        return pd.read_csv(path)
+    except EmptyDataError:
+        return pd.DataFrame()
+
+
+def write_table(df: pd.DataFrame, output_root: Path, stem: str, caption: str, label: str) -> None:
+    output_root.mkdir(parents=True, exist_ok=True)
+    csv_path = output_root / f"{stem}.csv"
+    tex_path = output_root / f"{stem}.tex"
+    df.to_csv(csv_path, index=False)
+    latex = df.to_latex(
+        index=False,
+        float_format=lambda value: f"{value:.3f}" if isinstance(value, float) else str(value),
+        escape=False,
+        caption=caption,
+        label=label,
+    )
+    tex_path.write_text(latex, encoding="utf-8")
+
+
+def build_coactivation_table(coactivation_root: Path, model_names: list[str]) -> pd.DataFrame:
+    path = coactivation_root / "coactivation_aggregate_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    rows: list[dict] = []
+    for dataset_name in sorted(frame["dataset_name"].drop_duplicates()):
+        left = frame[(frame["dataset_name"] == dataset_name) & (frame["model_name"] == left_model)]
+        right = frame[(frame["dataset_name"] == dataset_name) & (frame["model_name"] == right_model)]
+        if left.empty or right.empty:
+            continue
+        left_row = left.iloc[0]
+        right_row = right.iloc[0]
+        rows.append(
+            {
+                "Dataset": dataset_name,
+                "Public Offdiag (v2)": float(left_row["public_offdiag_mean"]),
+                "Public Offdiag (rt)": float(right_row["public_offdiag_mean"]),
+                "$\\Delta$ Public": float(right_row["public_offdiag_mean"] - left_row["public_offdiag_mean"]),
+                "Offdiag Mean (v2)": float(left_row["offdiag_mean"]),
+                "Offdiag Mean (rt)": float(right_row["offdiag_mean"]),
+                "$\\Delta$ Offdiag": float(right_row["offdiag_mean"] - left_row["offdiag_mean"]),
+                "Top Pair (v2)": str(left_row["dominant_pair"]),
+                "Top Pair (rt)": str(right_row["dominant_pair"]),
+                "$\\Delta$ Top Pair Strength": float(
+                    right_row["dominant_pair_value"] - left_row["dominant_pair_value"]
+                ),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def select_last_layer(frame: pd.DataFrame, dataset_name: str, source_name: str, representation: str) -> int | None:
+    subset = frame[
+        (frame["dataset_name"] == dataset_name)
+        & (frame["representation_source"] == source_name)
+        & (frame["representation"] == representation)
+    ]
+    if subset.empty:
+        return None
+    return int(subset["layer"].max())
+
+
+def metric_value(
+    frame: pd.DataFrame,
+    *,
+    dataset_name: str,
+    source_name: str,
+    representation: str,
+    layer: int,
+    group: str,
+    metric: str,
+) -> float | None:
+    subset = frame[
+        (frame["dataset_name"] == dataset_name)
+        & (frame["representation_source"] == source_name)
+        & (frame["representation"] == representation)
+        & (frame["layer"] == layer)
+        & (frame["group"] == group)
+        & (frame["metric"] == metric)
+    ]
+    if subset.empty:
+        return None
+    return float(subset.iloc[0]["value"])
+
+
+def build_latent_geometry_table(latent_root: Path, model_names: list[str]) -> pd.DataFrame:
+    path = latent_root / "latent_space_similarity_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+    representation = "last"
+    rows: list[dict] = []
+
+    for dataset_name in sorted(frame["dataset_name"].drop_duplicates()):
+        for source_name in ("pre_router", "hidden_state"):
+            layer = select_last_layer(frame, dataset_name, source_name, representation)
+            if layer is None:
+                continue
+            rows.append(
+                {
+                    "Dataset": dataset_name,
+                    "Source": source_name,
+                    "Layer": layer,
+                    "Cross-Model Cosine": metric_value(
+                        frame,
+                        dataset_name=dataset_name,
+                        source_name=source_name,
+                        representation=representation,
+                        layer=layer,
+                        group="all",
+                        metric="cross_model_cosine",
+                    ),
+                    "Centroid Dist.": metric_value(
+                        frame,
+                        dataset_name=dataset_name,
+                        source_name=source_name,
+                        representation=representation,
+                        layer=layer,
+                        group="all",
+                        metric="cross_model_centroid_distance",
+                    ),
+                    "Sep. Ratio": metric_value(
+                        frame,
+                        dataset_name=dataset_name,
+                        source_name=source_name,
+                        representation=representation,
+                        layer=layer,
+                        group="all",
+                        metric="cross_model_separation_ratio",
+                    ),
+                    f"Within Var ({left_model})": metric_value(
+                        frame,
+                        dataset_name=dataset_name,
+                        source_name=source_name,
+                        representation=representation,
+                        layer=layer,
+                        group=left_model,
+                        metric="within_group_variance",
+                    ),
+                    f"Within Var ({right_model})": metric_value(
+                        frame,
+                        dataset_name=dataset_name,
+                        source_name=source_name,
+                        representation=representation,
+                        layer=layer,
+                        group=right_model,
+                        metric="within_group_variance",
+                    ),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def build_mkqa_language_table(latent_root: Path) -> pd.DataFrame:
+    path = latent_root / "latent_space_similarity_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    dataset_name = "mkqa_en_da"
+    representation = "last"
+    rows: list[dict] = []
+
+    for source_name in ("pre_router", "hidden_state"):
+        layer = select_last_layer(frame, dataset_name, source_name, representation)
+        if layer is None:
+            continue
+        rows.append(
+            {
+                "Source": source_name,
+                "Layer": layer,
+                "EN Cross-Model Cosine": metric_value(
+                    frame,
+                    dataset_name=dataset_name,
+                    source_name=source_name,
+                    representation=representation,
+                    layer=layer,
+                    group="en",
+                    metric="cross_model_cosine",
+                ),
+                "DA Cross-Model Cosine": metric_value(
+                    frame,
+                    dataset_name=dataset_name,
+                    source_name=source_name,
+                    representation=representation,
+                    layer=layer,
+                    group="da",
+                    metric="cross_model_cosine",
+                ),
+                "EN Sep. Ratio": metric_value(
+                    frame,
+                    dataset_name=dataset_name,
+                    source_name=source_name,
+                    representation=representation,
+                    layer=layer,
+                    group="en",
+                    metric="cross_model_separation_ratio",
+                ),
+                "DA Sep. Ratio": metric_value(
+                    frame,
+                    dataset_name=dataset_name,
+                    source_name=source_name,
+                    representation=representation,
+                    layer=layer,
+                    group="da",
+                    metric="cross_model_separation_ratio",
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_top1_top2_table(top1_top2_root: Path, model_names: list[str]) -> pd.DataFrame:
+    path = top1_top2_root / "mix_top1_top2_confusion_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    rows: list[dict] = []
+    keys = ["dataset_label", "language", "top1_expert"]
+    for _, group in frame.groupby(keys, dropna=False):
+        left = group[group["model_name"] == left_model]
+        right = group[group["model_name"] == right_model]
+        if left.empty or right.empty:
+            continue
+        left_row = left.iloc[0]
+        right_row = right.iloc[0]
+        rows.append(
+            {
+                "Dataset": left_row["dataset_label"],
+                "Lang.": left_row["language"],
+                "Top-1 Expert": left_row["top1_expert"],
+                "Dominant Top-2 (v2)": left_row["dominant_top2_expert"],
+                "Dominant Top-2 (rt)": right_row["dominant_top2_expert"],
+                "P(top2|top1) (v2)": float(left_row["dominant_top2_probability"]),
+                "P(top2|top1) (rt)": float(right_row["dominant_top2_probability"]),
+                "$\\Delta$": float(right_row["dominant_top2_probability"] - left_row["dominant_top2_probability"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_routing_confidence_correlation_table(
+    routing_confidence_root: Path, model_names: list[str]
+) -> pd.DataFrame:
+    path = routing_confidence_root / "routing_confidence_correlations.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    keep = frame[
+        frame["phase"].eq("prompt")
+        & frame["confidence_metric"].isin(["mean_top1_top2_margin", "mean_token_entropy"])
+        & frame["outcome_metric"].isin(["is_correct_float", "score"])
+    ].copy()
+    if keep.empty:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for (dataset_name, confidence_metric, outcome_metric), group in keep.groupby(
+        ["dataset_name", "confidence_metric", "outcome_metric"], dropna=False
+    ):
+        left = group[group["model_name"] == left_model]
+        right = group[group["model_name"] == right_model]
+        if left.empty or right.empty:
+            continue
+        left_row = left.sort_values("layer").iloc[-1]
+        right_row = right.sort_values("layer").iloc[-1]
+        rows.append(
+            {
+                "Dataset": dataset_name,
+                "Confidence": str(confidence_metric),
+                "Outcome": "Accuracy" if outcome_metric == "is_correct_float" else "Score",
+                "Layer (v2)": int(left_row["layer"]),
+                "Layer (rt)": int(right_row["layer"]),
+                "Spearman (v2)": float(left_row["spearman_r"]) if pd.notna(left_row["spearman_r"]) else None,
+                "Spearman (rt)": float(right_row["spearman_r"]) if pd.notna(right_row["spearman_r"]) else None,
+                "$\\Delta$": (
+                    float(right_row["spearman_r"] - left_row["spearman_r"])
+                    if pd.notna(left_row["spearman_r"]) and pd.notna(right_row["spearman_r"])
+                    else None
+                ),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_routing_confidence_bucket_table(
+    routing_confidence_root: Path, model_names: list[str]
+) -> pd.DataFrame:
+    path = routing_confidence_root / "routing_confidence_bucket_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    keep = frame[
+        frame["phase"].eq("prompt")
+        & frame["confidence_metric"].eq("mean_top1_top2_margin")
+    ].copy()
+    if keep.empty:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for dataset_name, group in keep.groupby("dataset_name", dropna=False):
+        left = group[group["model_name"] == left_model].sort_values("bucket_id")
+        right = group[group["model_name"] == right_model].sort_values("bucket_id")
+        if left.empty or right.empty:
+            continue
+        left_low = left.iloc[0]
+        left_high = left.iloc[-1]
+        right_low = right.iloc[0]
+        right_high = right.iloc[-1]
+        rows.append(
+            {
+                "Dataset": dataset_name,
+                "Low Bucket Acc. (v2)": float(left_low["mean_accuracy"]),
+                "High Bucket Acc. (v2)": float(left_high["mean_accuracy"]),
+                "$\\Delta$ Acc. (v2)": float(left_high["mean_accuracy"] - left_low["mean_accuracy"]),
+                "Low Bucket Acc. (rt)": float(right_low["mean_accuracy"]),
+                "High Bucket Acc. (rt)": float(right_high["mean_accuracy"]),
+                "$\\Delta$ Acc. (rt)": float(right_high["mean_accuracy"] - right_low["mean_accuracy"]),
+                "Low Bucket Score (v2)": float(left_low["mean_score"]),
+                "High Bucket Score (v2)": float(left_high["mean_score"]),
+                "Low Bucket Score (rt)": float(right_low["mean_score"]),
+                "High Bucket Score (rt)": float(right_high["mean_score"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_correctness_conditioned_table(
+    correctness_conditioned_root: Path, model_names: list[str]
+) -> pd.DataFrame:
+    path = correctness_conditioned_root / "correctness_conditioned_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    keep = frame[
+        frame["correctness"].isin(["correct", "incorrect"])
+    ].copy()
+    if keep.empty:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for (dataset_name, layer), group in keep.groupby(["dataset_name", "layer"], dropna=False):
+        for correctness in ("correct", "incorrect"):
+            left = group[(group["model_name"] == left_model) & (group["correctness"] == correctness)]
+            right = group[(group["model_name"] == right_model) & (group["correctness"] == correctness)]
+            if left.empty or right.empty:
+                continue
+            left_row = left.iloc[0]
+            right_row = right.iloc[0]
+            rows.append(
+                {
+                    "Dataset": dataset_name,
+                    "Layer": int(layer),
+                    "Subset": correctness.capitalize(),
+                    "Margin (v2)": float(left_row["mean_top1_top2_margin"]),
+                    "Margin (rt)": float(right_row["mean_top1_top2_margin"]),
+                    "$\\Delta$ Margin": float(right_row["mean_top1_top2_margin"] - left_row["mean_top1_top2_margin"]),
+                    "Entropy (v2)": float(left_row["mean_token_entropy"]),
+                    "Entropy (rt)": float(right_row["mean_token_entropy"]),
+                    "$\\Delta$ Entropy": float(right_row["mean_token_entropy"] - left_row["mean_token_entropy"]),
+                    "Public Top-1 (v2)": float(left_row["public_top1_rate"]),
+                    "Public Top-1 (rt)": float(right_row["public_top1_rate"]),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def build_expert_contribution_table(
+    expert_contribution_root: Path, model_names: list[str]
+) -> pd.DataFrame:
+    path = expert_contribution_root / "expert_contribution_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    primary = frame[~frame.get("record_type", pd.Series(index=frame.index, dtype=object)).eq("per_expert")].copy()
+    left_model, right_model = model_names
+
+    rows: list[dict] = []
+    for (dataset_name, layer), group in primary.groupby(["dataset_name", "layer"], dropna=False):
+        left = group[group["model_name"] == left_model]
+        right = group[group["model_name"] == right_model]
+        if left.empty or right.empty:
+            continue
+        left_row = left.iloc[0]
+        right_row = right.iloc[0]
+        rows.append(
+            {
+                "Dataset": dataset_name,
+                "Layer": int(layer),
+                "Top-1 Share (v2)": float(left_row["mean_top1_contribution_share"]),
+                "Top-1 Share (rt)": float(right_row["mean_top1_contribution_share"]),
+                "$\\Delta$ Top-1": float(right_row["mean_top1_contribution_share"] - left_row["mean_top1_contribution_share"]),
+                "Top-2 Share (v2)": float(left_row["mean_top2_contribution_share"]),
+                "Top-2 Share (rt)": float(right_row["mean_top2_contribution_share"]),
+                "$\\Delta$ Top-2": float(right_row["mean_top2_contribution_share"] - left_row["mean_top2_contribution_share"]),
+                "Public Dom. (v2)": float(left_row["public_dominance_rate"]),
+                "Public Dom. (rt)": float(right_row["public_dominance_rate"]),
+                "Top-2 Negl. (v2)": float(left_row["top2_negligible_rate"]),
+                "Top-2 Negl. (rt)": float(right_row["top2_negligible_rate"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_router_geometry_table(router_geometry_root: Path, model_names: list[str]) -> pd.DataFrame:
+    path = router_geometry_root / "router_weight_geometry_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    rows: list[dict] = []
+    for layer, group in frame.groupby("layer", dropna=False):
+        left = group[group["model_name"] == left_model]
+        right = group[group["model_name"] == right_model]
+        if left.empty or right.empty:
+            continue
+        left_row = left.iloc[0]
+        right_row = right.iloc[0]
+        rows.append(
+            {
+                "Layer": int(layer),
+                "Eff. Rank (v2)": float(left_row["effective_rank"]),
+                "Eff. Rank (rt)": float(right_row["effective_rank"]),
+                "$\\Delta$ Eff. Rank": float(right_row["effective_rank"] - left_row["effective_rank"]),
+                "Stable Rank (v2)": float(left_row["stable_rank"]),
+                "Stable Rank (rt)": float(right_row["stable_rank"]),
+                "Mean Offdiag Cos. (v2)": float(left_row["mean_offdiag_cosine"]),
+                "Mean Offdiag Cos. (rt)": float(right_row["mean_offdiag_cosine"]),
+                "Mean Norm (v2)": float(left_row["mean_row_norm"]),
+                "Mean Norm (rt)": float(right_row["mean_row_norm"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_representation_geometry_table(
+    representation_geometry_root: Path, model_names: list[str]
+) -> pd.DataFrame:
+    path = representation_geometry_root / "representation_geometry_summary.csv"
+    frame = load_csv(path)
+    if frame.empty:
+        return pd.DataFrame()
+    left_model, right_model = model_names
+
+    rows: list[dict] = []
+    keys = ["dataset_name", "representation_source", "layer", "representation"]
+    for _, group in frame.groupby(keys, dropna=False):
+        left = group[group["model_name"] == left_model]
+        right = group[group["model_name"] == right_model]
+        if left.empty or right.empty:
+            continue
+        left_row = left.iloc[0]
+        right_row = right.iloc[0]
+        rows.append(
+            {
+                "Dataset": str(left_row["dataset_name"]),
+                "Source": str(left_row["representation_source"]),
+                "Layer": int(left_row["layer"]),
+                "Pooling": str(left_row["representation"]),
+                "Eff. Rank (v2)": float(left_row["effective_rank"]),
+                "Eff. Rank (rt)": float(right_row["effective_rank"]),
+                "Stable Rank (v2)": float(left_row["stable_rank"]),
+                "Stable Rank (rt)": float(right_row["stable_rank"]),
+                "Mean Radius (v2)": float(left_row["mean_radius"]),
+                "Mean Radius (rt)": float(right_row["mean_radius"]),
+                "Sep. Ratio (v2)": float(left_row["separation_ratio"]),
+                "Sep. Ratio (rt)": float(right_row["separation_ratio"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def load_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    with path.open("r", encoding="utf-8") as handle:
+        return [__import__("json").loads(line) for line in handle if line.strip()]
+
+
+def dataset_display_name(dataset_name: str) -> str:
+    return {
+        "mkqa_en_da": "MGQA (EN/DA)",
+        "gsm8k_subset": "GSM8K",
+        "mbpp_subset": "MBPP",
+        "pubmedqa_subset": "PubMedQA",
+        "ag_news_subset": "AG News",
+        "common_gen_subset": "CommonGen",
+    }.get(dataset_name, dataset_name)
+
+
+def expert_name_map() -> dict[int, str]:
+    return {
+        0: "Base",
+        1: "Code",
+        2: "Creative Writing",
+        3: "Math",
+        4: "News",
+        5: "Academic",
+        6: "Reddit",
+        7: "Danish",
+    }
+
+
+def build_mix_overview_table(
+    routing_confidence_root: Path,
+    coactivation_root: Path,
+    routing_light_root: Path,
+    model_names: list[str],
+) -> pd.DataFrame:
+    confidence_path = routing_confidence_root / "routing_confidence_outcome_records.csv"
+    confidence = load_csv(confidence_path)
+    if confidence.empty:
+        return pd.DataFrame()
+    confidence = confidence[confidence["phase"] == "prompt"].copy()
+    if confidence.empty:
+        return pd.DataFrame()
+    confidence = confidence.sort_values(["model_name", "dataset_name", "example_id", "layer"])
+    per_example = confidence.drop_duplicates(
+        subset=["model_name", "dataset_name", "example_id"], keep="last"
+    )
+    score_summary = (
+        per_example.groupby(["model_name", "dataset_name"], dropna=False)
+        .agg(
+            accuracy=("is_correct_float", "mean"),
+            mean_score=("score", "mean"),
+            mean_token_f1=("token_f1", "mean"),
+            num_examples=("example_id", "nunique"),
+        )
+        .reset_index()
+    )
+
+    coactivation_path = coactivation_root / "coactivation_aggregate_summary.csv"
+    coactivation = load_csv(coactivation_path)
+    if coactivation.empty:
+        return pd.DataFrame()
+
+    expert_names = expert_name_map()
+    routing_rows: list[dict] = []
+    for model_name in model_names:
+        model_root = routing_light_root / model_name
+        if not model_root.exists():
+            continue
+        for dataset_dir in sorted(path for path in model_root.iterdir() if path.is_dir()):
+            analysis_path = dataset_dir / "native_full" / "routing_analysis.jsonl"
+            if not analysis_path.exists():
+                continue
+            records = load_jsonl(analysis_path)
+            aggregate = next((row for row in records if row.get("record_type") == "routing_aggregate"), None)
+            if aggregate is None:
+                continue
+            usage = aggregate.get("usage")
+            if usage is None:
+                continue
+            usage_list = [float(value) for value in usage]
+            public_share = usage_list[0] if usage_list else None
+            dominant_idx = max(range(len(usage_list)), key=lambda idx: usage_list[idx]) if usage_list else None
+            routing_rows.append(
+                {
+                    "model_name": model_name,
+                    "dataset_name": dataset_dir.name,
+                    "public_top1_share": public_share,
+                    "dominant_expert": expert_names.get(dominant_idx, str(dominant_idx)) if dominant_idx is not None else None,
+                    "dominant_expert_share": usage_list[dominant_idx] if dominant_idx is not None else None,
+                    "mean_top1_prob": float(aggregate.get("mean_top1_prob")) if aggregate.get("mean_top1_prob") is not None else None,
+                    "mean_top1_top2_margin": (
+                        float(aggregate.get("mean_top1_top2_margin"))
+                        if aggregate.get("mean_top1_top2_margin") is not None
+                        else None
+                    ),
+                    "mean_token_entropy": (
+                        float(aggregate.get("mean_token_entropy"))
+                        if aggregate.get("mean_token_entropy") is not None
+                        else None
+                    ),
+                }
+            )
+    routing_summary = pd.DataFrame(routing_rows)
+
+    merged = score_summary.merge(coactivation, on=["model_name", "dataset_name"], how="left")
+    if not routing_summary.empty:
+        merged = merged.merge(routing_summary, on=["model_name", "dataset_name"], how="left")
+
+    output = merged[
+        [
+            "model_name",
+            "dataset_name",
+            "num_examples",
+            "accuracy",
+            "mean_score",
+            "mean_token_f1",
+            "public_top1_share",
+            "public_offdiag_mean",
+            "dominant_expert",
+            "dominant_expert_share",
+            "dominant_pair",
+            "dominant_pair_value",
+            "mean_top1_prob",
+            "mean_top1_top2_margin",
+            "mean_token_entropy",
+        ]
+    ].copy()
+    output["Model"] = output["model_name"].str.replace("FlexOlmo-8x7B-1T-", "", regex=False)
+    output["Dataset"] = output["dataset_name"].map(dataset_display_name)
+    output["Accuracy"] = output["accuracy"]
+    output["Mean Score"] = output["mean_score"]
+    output["Mean F1"] = output["mean_token_f1"]
+    output["Public Top-1 Share"] = output["public_top1_share"]
+    output["Public Co-act."] = output["public_offdiag_mean"]
+    output["Dominant Expert"] = output["dominant_expert"]
+    output["Dominant Expert Share"] = output["dominant_expert_share"]
+    output["Dominant Pair"] = output["dominant_pair"]
+    output["Dominant Pair Strength"] = output["dominant_pair_value"]
+    output["Mean Top-1 Prob"] = output["mean_top1_prob"]
+    output["Mean Margin"] = output["mean_top1_top2_margin"]
+    output["Mean Entropy"] = output["mean_token_entropy"]
+    output["N"] = output["num_examples"]
+    return output[
+        [
+            "Model",
+            "Dataset",
+            "N",
+            "Accuracy",
+            "Mean Score",
+            "Mean F1",
+            "Public Top-1 Share",
+            "Public Co-act.",
+            "Dominant Expert",
+            "Dominant Expert Share",
+            "Dominant Pair",
+            "Dominant Pair Strength",
+            "Mean Top-1 Prob",
+            "Mean Margin",
+            "Mean Entropy",
+        ]
+    ]
+
+
+def write_readme(output_root: Path) -> None:
+    text = """# 55B Summary Tables
+
+This directory contains compact CSV and LaTeX tables derived from the mix comparison outputs.
+
+Files:
+- `coactivation_dataset_comparison.csv/.tex`
+- `latent_geometry_last_layer.csv/.tex`
+- `mkqa_language_geometry.csv/.tex`
+- `top1_top2_competition.csv/.tex`
+- `routing_confidence_correlation.csv/.tex`
+- `routing_confidence_buckets.csv/.tex`
+- `correctness_conditioned_summary.csv/.tex`
+- `expert_contribution_summary.csv/.tex`
+- `router_geometry_summary.csv/.tex`
+- `representation_geometry_summary.csv/.tex`
+- `mix_overview.csv/.tex`
+
+Intended use:
+- quick paper/slides tables
+- side-by-side support for the co-activation and latent-space figures
+"""
+    (output_root / "README.md").write_text(text, encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    model_names = parse_model_names(args.model_names)
+    output_root = args.output_root
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    coactivation_table = build_coactivation_table(args.coactivation_root, model_names)
+    latent_table = build_latent_geometry_table(args.latent_root, model_names)
+    mkqa_table = build_mkqa_language_table(args.latent_root)
+    top1_top2_table = build_top1_top2_table(args.top1_top2_root, model_names)
+    routing_conf_corr_table = build_routing_confidence_correlation_table(args.routing_confidence_root, model_names)
+    routing_conf_bucket_table = build_routing_confidence_bucket_table(args.routing_confidence_root, model_names)
+    correctness_conditioned_table = build_correctness_conditioned_table(
+        args.correctness_conditioned_root,
+        model_names,
+    )
+    expert_contribution_table = build_expert_contribution_table(
+        args.expert_contribution_root,
+        model_names,
+    )
+    router_geometry_table = build_router_geometry_table(
+        args.router_geometry_root,
+        model_names,
+    )
+    representation_geometry_table = build_representation_geometry_table(
+        args.representation_geometry_root,
+        model_names,
+    )
+    overview_table = build_mix_overview_table(
+        args.routing_confidence_root,
+        args.coactivation_root,
+        args.routing_light_root,
+        model_names,
+    )
+
+    write_table(
+        coactivation_table,
+        output_root,
+        "coactivation_dataset_comparison",
+        "Co-activation summary comparison for the 55B FlexOlmo pair.",
+        "tab:mix_coactivation_summary",
+    )
+    write_table(
+        latent_table,
+        output_root,
+        "latent_geometry_last_layer",
+        "Last-layer latent geometry summary for pre-router and hidden-state representations.",
+        "tab:mix_latent_geometry",
+    )
+    write_table(
+        mkqa_table,
+        output_root,
+        "mkqa_language_geometry",
+        "MKQA English/Danish geometry comparison for the 55B FlexOlmo pair.",
+        "tab:mix_mkqa_language_geometry",
+    )
+    write_table(
+        top1_top2_table,
+        output_root,
+        "top1_top2_competition",
+        "Top-1 vs. top-2 expert competition summary for the 55B FlexOlmo pair.",
+        "tab:mix_top1_top2_competition",
+    )
+    write_table(
+        routing_conf_corr_table,
+        output_root,
+        "routing_confidence_correlation",
+        "Routing-confidence correlation summary for the 55B FlexOlmo pair.",
+        "tab:mix_routing_confidence_correlation",
+    )
+    write_table(
+        routing_conf_bucket_table,
+        output_root,
+        "routing_confidence_buckets",
+        "Routing-confidence bucket summary for the 55B FlexOlmo pair.",
+        "tab:mix_routing_confidence_buckets",
+    )
+    write_table(
+        correctness_conditioned_table,
+        output_root,
+        "correctness_conditioned_summary",
+        "Correctness-conditioned routing summary for the 55B FlexOlmo pair.",
+        "tab:mix_correctness_conditioned",
+    )
+    write_table(
+        expert_contribution_table,
+        output_root,
+        "expert_contribution_summary",
+        "Expert contribution summary for the 55B FlexOlmo pair.",
+        "tab:mix_expert_contribution",
+    )
+    write_table(
+        router_geometry_table,
+        output_root,
+        "router_geometry_summary",
+        "Router weight geometry summary for the selected model pair.",
+        "tab:mix_router_geometry",
+    )
+    write_table(
+        representation_geometry_table,
+        output_root,
+        "representation_geometry_summary",
+        "Representation geometry summary for embedding, hidden-state, and pre-router latents.",
+        "tab:mix_representation_geometry",
+    )
+    write_table(
+        overview_table,
+        output_root,
+        "mix_overview",
+        "Compact overview of model scores and expert/public routing behavior across the selected mix datasets.",
+        "tab:mix_overview",
+    )
+    write_readme(output_root)
+
+    print(f"Wrote mix summary tables to {output_root}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

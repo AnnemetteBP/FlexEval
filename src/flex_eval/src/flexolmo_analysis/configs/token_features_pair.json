@@ -1,0 +1,35 @@
+{
+  "shared": {
+    "dataset_manifest": "eval/benchmarks/mix/data/mix_manifest.json",
+    "model_root": "/work/training/FlexMoRE/models",
+    "model_registry": "model_paths/all_models.txt",
+    "datasets": [
+      "mkqa_en_da",
+      "gsm8k_subset",
+      "pubmedqa_subset"
+    ],
+    "selected_layers": "early_mid_late_last",
+    "representation_sources": "pre_router,hidden_state"
+  },
+  "runtime": {
+    "device": "auto",
+    "dtype": "auto",
+    "max_length": 512,
+    "max_examples_per_dataset": 75,
+    "output_root": "outputs/analysis/captures/token_features",
+    "public_expert_idx": 0,
+    "combined_active_experts": "2,4,7",
+    "routing_run_mode": "native_only",
+    "include_individual_experts": false
+  },
+  "models": [
+    {
+      "enabled": true,
+      "model_name": "MODEL_NAME_A"
+    },
+    {
+      "enabled": true,
+      "model_name": "MODEL_NAME_B"
+    }
+  ]
+}

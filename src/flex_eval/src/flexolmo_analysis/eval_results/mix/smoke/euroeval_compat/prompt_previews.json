@@ -1,0 +1,66 @@
+{
+  "multi_wiki_qa_da_smoke": {
+    "raw_zero_shot": {
+      "language": "da",
+      "prompt_preview": "Følgende er tekster med tilhørende spørgsmål og svar.\n\nTekst: Aarhus er Danmarks næststørste by og ligger i Region Midtjylland.\nSpørgsmål: Hvilken region ligger Aarhus i?\nSvar med maks. 3 ord: ",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": false,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": false
+      }
+    },
+    "raw_few_shot": {
+      "language": "da",
+      "prompt_preview": "Følgende er tekster med tilhørende spørgsmål og svar.\n\nTekst: Skagen ligger helt nord i Jylland og er kendt for Grenen.\nSpørgsmål: Hvad er Skagen kendt for?\nSvar med maks. 3 ord: Grenen\n\nTekst: Odense er den største by på Fyn og er fødeby for H.C. Andersen.\nSpørgsmål: Hvem er Odense kendt som fødeby for?\nSvar med maks. 3 ord: H.C. Andersen\n\nTekst: Aarhus er Danmarks næststørste by og ligger i Region Midtjylland.\nSpørgsmål: Hvilken region ligger Aarhus i?\nSvar med maks. 3 ord: ",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": true,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": false
+      }
+    },
+    "chat_few_shot": {
+      "language": "da",
+      "prompt_preview": "[chat::da]\nUSER: Tekst: Skagen ligger helt nord i Jylland og er kendt for Grenen.\n\nBesvar følgende spørgsmål om teksten ovenfor med maks. 3 ord.\n\nSpørgsmål: Hvad er Skagen kendt for?\nASSISTANT: Grenen\nUSER: Tekst: Odense er den største by på Fyn og er fødeby for H.C. Andersen.\n\nBesvar følgende spørgsmål om teksten ovenfor med maks. 3 ord.\n\nSpørgsmål: Hvem er Odense kendt som fødeby for?\nASSISTANT: H.C. Andersen\nUSER: Tekst: Aarhus er Danmarks næststørste by og ligger i Region Midtjylland.\n\nBesvar følgende spørgsmål om teksten ovenfor med maks. 3 ord.\n\nSpørgsmål: Hvilken region ligger Aarhus i?\nASSISTANT:",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": true,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": true
+      }
+    }
+  },
+  "multi_wiki_qa_en_smoke": {
+    "raw_zero_shot": {
+      "language": "en",
+      "prompt_preview": "The following are texts with accompanying questions and answers.\n\nText: Aarhus is Denmark's second-largest city and is located in the Central Denmark Region.\nQuestion: Which region is Aarhus located in?\nAnswer in max 3 words: ",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": false,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": false
+      }
+    },
+    "raw_few_shot": {
+      "language": "en",
+      "prompt_preview": "The following are texts with accompanying questions and answers.\n\nText: Skagen lies at the northern tip of Jutland and is famous for Grenen.\nQuestion: What is Skagen famous for?\nAnswer in max 3 words: Grenen\n\nText: Odense is the largest city on Funen and is the birthplace of Hans Christian Andersen.\nQuestion: Who was born in Odense?\nAnswer in max 3 words: Hans Christian Andersen\n\nText: Aarhus is Denmark's second-largest city and is located in the Central Denmark Region.\nQuestion: Which region is Aarhus located in?\nAnswer in max 3 words: ",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": true,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": false
+      }
+    },
+    "chat_few_shot": {
+      "language": "en",
+      "prompt_preview": "[chat::en]\nUSER: Text: Skagen lies at the northern tip of Jutland and is famous for Grenen.\n\nAnswer the following question about the above text in at most 3 words.\n\nQuestion: What is Skagen famous for?\nASSISTANT: Grenen\nUSER: Text: Odense is the largest city on Funen and is the birthplace of Hans Christian Andersen.\n\nAnswer the following question about the above text in at most 3 words.\n\nQuestion: Who was born in Odense?\nASSISTANT: Hans Christian Andersen\nUSER: Text: Aarhus is Denmark's second-largest city and is located in the Central Denmark Region.\n\nAnswer the following question about the above text in at most 3 words.\n\nQuestion: Which region is Aarhus located in?\nASSISTANT:",
+      "euroeval_compat": {
+        "enabled": true,
+        "few_shot": true,
+        "num_few_shot_examples": 2,
+        "chat_template_applied": true
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flexeval"
+version = "0.1.0"
+description = "Unified evaluation and analysis workspace for Flex-family models"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "torch==2.8.0; sys_platform != 'linux'",
+  "torch==2.8.0+cu128; sys_platform == 'linux'",
+  "accelerate==1.13.0",
+  "datasets==3.6.0",
+  "huggingface-hub==1.17.0",
+  "numpy==1.26.4",
+  "pandas==3.0.3",
+  "matplotlib==3.10.9",
+  "seaborn==0.13.2",
+  "scikit-learn==1.6.1",
+  "umap-learn==0.5.12",
+  "python-dotenv==1.2.2",
+  "pyyaml==6.0.3",
+  "transformers @ git+https://github.com/peter-sk/transformers.git@9da5df2d2d2fe155f861d6248ba5bb0b1c769513",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.1",
+  "pytest-cov==7.0.0",
+  "ruff==0.14.6",
+  "mypy==1.18.2",
+  "black==26.1.0",
+  "isort==7.0.1",
+  "ipython==9.4.0",
+]
+vllm = [
+  "vllm==0.11.0",
+  "ray==2.55.1",
+]
+
+[project.scripts]
+flexeval = "flexeval.cli.run:main"
+
+[tool.setuptools]
+package-dir = {"" = "src/flex_eval/src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src/flex_eval/src"]
+include = ["flexeval*", "flexolmo_analysis*"]
