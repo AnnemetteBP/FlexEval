@@ -2,15 +2,23 @@
   <img src="assets/FlexEval.png" alt="FlexEval" width="720">
 </p>
 
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-0f766e">
+  <img alt="Python 3.11" src="https://img.shields.io/badge/Python-3.11-1d4ed8">
+  <img alt="PyTorch 2.8.0" src="https://img.shields.io/badge/PyTorch-2.8.0-ee4c2c">
+  <img alt="Datasets 3.6.0" src="https://img.shields.io/badge/Datasets-3.6.0-f59e0b">
+  <img alt="Accelerate 1.13.0" src="https://img.shields.io/badge/Accelerate-1.13.0-7c3aed">
+</p>
+
+<p align="center">
+  <img alt="Transformers fork" src="https://img.shields.io/badge/Transformers-peter--sk%2Ftransformers%409da5df2d2d2fe155f861d6248ba5bb0b1c769513-374151">
+</p>
+
 # FlexEval
 
 FlexEval is a unified evaluation and analysis project for Flex-family models.
 It brings Flex capture and analysis together with integrated `EuroEval` and
 `olmes` support in one repository and one shared installation flow.
-
-## License
-
-MIT
 
 ## Requirements
 
