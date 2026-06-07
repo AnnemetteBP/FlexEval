@@ -10,6 +10,7 @@ from flexeval.schemas.config import EngineConfig, RunConfig, SamplingConfig
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generic FlexEval run entrypoint.")
     parser.add_argument("--backend", required=True)
+    parser.add_argument("--architecture", default="flex-family")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--engine", default="transformers")
@@ -25,6 +26,7 @@ def main() -> int:
     args = parser.parse_args()
     config = RunConfig(
         backend=args.backend,
+        architecture=args.architecture,
         dataset=args.dataset,
         model=args.model,
         sampling=SamplingConfig(num_samples=args.num_samples),
@@ -36,6 +38,7 @@ def main() -> int:
     pprint(
         {
             "backend": config.backend,
+            "architecture": config.architecture,
             "engine": config.engine.engine,
             "dataset": config.dataset,
             "model": config.model,

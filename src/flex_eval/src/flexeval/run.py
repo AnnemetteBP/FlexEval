@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from flexeval.architectures.registry import create_architecture
 from flexeval.backends.registry import create_backend
 from flexeval.engines.registry import create_engine
 from flexeval.schemas.config import RunConfig
@@ -15,6 +16,8 @@ class RunOutputs:
 
 
 def run_evaluation(config: RunConfig) -> RunOutputs:
+    architecture = create_architecture(config.architecture)
+    architecture.validate_run(config)
     backend = create_backend(config.backend)
     engine = create_engine(config.engine.engine)
 

@@ -7,7 +7,6 @@ from flexeval.backends.olmes_backend import OlmesBackend
 BACKEND_REGISTRY: dict[str, type[BackendAdapter]] = {
     "euroeval": EuroEvalBackend,
     "olmes": OlmesBackend,
-    "flexolmo": OlmesBackend,
 }
 
 

@@ -37,6 +37,7 @@ build_root_install_target() {
   local project_root="$1"
   local mode="$2"
   local engine="$3"
+  local architecture="$4"
   local extras=()
 
   if [[ "${mode}" == "dev" ]]; then
@@ -44,11 +45,23 @@ build_root_install_target() {
   fi
 
   if [[ "${engine}" == "vllm" ]]; then
-    extras+=("vllm")
+    extras+=("engine-vllm")
   elif [[ "${engine}" != "transformers" ]]; then
     echo "Unsupported ENGINE='${engine}'." >&2
     exit 1
   fi
+
+  case "${architecture}" in
+    none|generic)
+      ;;
+    flex-family)
+      extras+=("architecture-flex-family")
+      ;;
+    *)
+      echo "Unsupported ARCHITECTURE='${architecture}'." >&2
+      exit 1
+      ;;
+  esac
 
   if [[ ${#extras[@]} -eq 0 ]]; then
     printf '%s' "${project_root}"
@@ -64,9 +77,10 @@ install_root_package() {
   local project_root="$1"
   local mode="$2"
   local engine="$3"
+  local architecture="$4"
   local install_target
 
-  install_target="$(build_root_install_target "${project_root}" "${mode}" "${engine}")"
+  install_target="$(build_root_install_target "${project_root}" "${mode}" "${engine}" "${architecture}")"
   python -m pip install --upgrade pip setuptools wheel
   python -m pip install -e "${install_target}"
 }
@@ -104,8 +118,9 @@ install_selected_profile() {
   local mode="$2"
   local backend="$3"
   local engine="$4"
+  local architecture="$5"
 
-  install_root_package "${project_root}" "${mode}" "${engine}"
+  install_root_package "${project_root}" "${mode}" "${engine}" "${architecture}"
   install_backend_selection "${project_root}" "${backend}"
 }
 

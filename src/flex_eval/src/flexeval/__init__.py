@@ -1,2 +1,1 @@
-"""Core package for reusable evaluation and analysis infrastructure."""
-
+"""Core package for flexible-architecture evaluation and analysis."""

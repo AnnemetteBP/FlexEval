@@ -23,6 +23,7 @@ class SamplingConfig:
 @dataclass(slots=True)
 class RunConfig:
     backend: str
+    architecture: str
     dataset: str
     model: str
     task: str | None = None
@@ -30,4 +31,3 @@ class RunConfig:
     engine: EngineConfig = field(default_factory=EngineConfig)
     capture_targets: tuple[str, ...] = ()
     analysis_targets: tuple[str, ...] = ()
-
